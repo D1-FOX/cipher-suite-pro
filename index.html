@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Universal Decoder Pro</title>
+  <style>
+    :root {
+      --bg: #0f172a; --box: #1e293b; --text: #e5e7eb; --accent: #38bdf8; --input-bg: #0f172a;
+    }
+    .light-mode {
+      --bg: #f1f5f9; --box: #ffffff; --text: #1e293b; --accent: #0284c7; --input-bg: #f8fafc;
+    }
+    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; transition: 0.3s; }
+    h1 { color: var(--accent); text-align: center; margin-bottom: 5px; }
+    .author-tag { text-align: center; font-size: 0.8rem; color: #64748b; margin-bottom: 20px; }
+    .box { max-width: 600px; margin: auto; background: var(--box); padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; }
+    .top-controls { position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; }
+    .icon-btn { background: none; border: none; cursor: pointer; font-size: 1.2rem; color: var(--accent); padding: 5px; width: auto; }
+    
+    label { display: block; margin-top: 15px; font-weight: bold; color: #64748b; font-size: 0.9rem; }
+    select, textarea, input, button { width: 100%; margin-top: 8px; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: var(--input-bg); color: var(--text); font-size: 15px; box-sizing: border-box; }
+    
+    .btn-group { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-top: 20px; }
+    button.primary { background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; }
+    button.secondary { background: transparent; border: 1px solid var(--accent); color: var(--accent); cursor: pointer; }
+    
+    /* Result and Privacy Blur */
+    #result { margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.1); border-left: 4px solid var(--accent); border-radius: 4px; white-space: pre-wrap; min-height: 40px; word-break: break-all; font-family: monospace; transition: filter 0.3s ease; }
+    .locked #result, .locked #historyList { filter: blur(8px); pointer-events: none; user-select: none; }
+
+    /* History Styles */
+    .history-section { margin-top: 30px; border-top: 1px solid #334155; padding-top: 20px; transition: filter 0.3s ease; }
+    .history-item { background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px; margin-bottom: 8px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; border: 1px solid transparent; }
+    .history-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80%; }
+    .history-action { color: var(--accent); cursor: pointer; font-weight: bold; }
+    
+    .hidden { display: none; }
+    .footer-credit { text-align: center; margin-top: 20px; font-size: 0.75rem; color: #475569; }
+  </style>
+</head>
+<body class="dark-mode">
+
+<div class="box" id="mainBox">
+  <div class="top-controls">
+    <button class="icon-btn" id="lockBtn" onclick="handlePrivacy()" title="Privacy Lock">🔓</button>
+    <button class="icon-btn" onclick="toggleTheme()" title="Theme">🌓</button>
+    <button class="icon-btn" onclick="clearAll()" title="Clear">🗑️</button>
+  </div>
+
+  <h1>🔐 Universal Decoder</h1>
+  <div class="author-tag">Created by [D-FOX]</div>
+  
+  <label>Input Message</label>
+  <textarea id="userInput" rows="4" placeholder="Type or paste here..." oninput="process()"></textarea>
+
+  <label>Method</label>
+  <select id="decoder" onchange="updateUI(); process();">
+    <option value="base64">Base64 (Auto)</option>
+    <option value="caesar">Caesar Cipher</option>
+    <option value="hex">Hexadecimal</option>
+    <option value="morse">Morse Code</option>
+    <option value="binary">Binary</option>
+    <option value="reverse">Reverse Text</option>
+  </select>
+
+  <div id="shiftContainer" class="hidden">
+    <label>Shift Amount</label>
+    <input type="number" id="shift" value="3" oninput="process()">
+  </div>
+
+  <div class="btn-group">
+    <button class="primary" onclick="saveToHistory()">Save to History</button>
+    <button class="secondary" id="copyBtn" onclick="copyResult()">Copy</button>
+    <button class="secondary" onclick="downloadResult()">Export</button>
+  </div>
+
+  <label>Result</label>
+  <div id="result">Waiting for input...</div>
+
+  <div class="history-section">
+    <label>Recent History</label>
+    <div id="historyList">
+      <div style="font-size: 0.8rem; color: #64748b; text-align: center;">No history yet.</div>
+    </div>
+  </div>
+
+  <div class="footer-credit">&copy; 2026 [D-FOX]. All Rights Reserved.</div>
+</div>
+
+<script>
+  const morseMap = { 'a': '.-', 'b': '-...', 'c': '-.-.', 'd': '-..', 'e': '.', 'f': '..-.', 'g': '--.', 'h': '....', 'i': '..', 'j': '.---', 'k': '-.-', 'l': '.-..', 'm': '--', 'n': '-.', 'o': '---', 'p': '.--.', 'q': '--.-', 'r': '.-.', 's': '...', 't': '-', 'u': '..-', 'v': '...-', 'w': '.--', 'x': '-..-', 'y': '-.--', 'z': '--..', '1': '.----', '2': '..---', '3': '...--', '4': '....-', '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.', '0': '-----', ' ': '/' };
+  const revMorse = Object.fromEntries(Object.entries(morseMap).map(([k,v])=>[v,k]));
+  
+  let history = JSON.parse(localStorage.getItem('decoder_history')) || [];
+  let userPin = localStorage.getItem('decoder_pin') || null;
+  let isLocked = false;
+
+  function handlePrivacy() {
+    if (!userPin) {
+      let setup = prompt("Create a 4-digit PIN to secure your data:");
+      if (setup && setup.length >= 4) {
+        userPin = setup;
+        localStorage.setItem('decoder_pin', userPin);
+        alert("PIN Set! Click the lock to hide your data.");
+      }
+    } else {
+      if (isLocked) {
+        let attempt = prompt("Enter PIN to unlock:");
+        if (attempt === userPin) {
+          isLocked = false;
+          document.getElementById('mainBox').classList.remove('locked');
+          document.getElementById('lockBtn').innerText = "🔓";
+        } else {
+          alert("Incorrect PIN");
+        }
+      } else {
+        isLocked = true;
+        document.getElementById('mainBox').classList.add('locked');
+        document.getElementById('lockBtn').innerText = "🔒";
+      }
+    }
+  }
+
+  function toggleTheme() { document.body.classList.toggle('light-mode'); }
+  function clearAll() { document.getElementById('userInput').value = ''; process(); }
+  function updateUI() { document.getElementById('shiftContainer').classList.toggle('hidden', document.getElementById('decoder').value !== 'caesar'); }
+
+  function process() {
+    const input = document.getElementById('userInput').value;
+    const method = document.getElementById('decoder').value;
+    const res = document.getElementById('result');
+    if (!input) { res.innerText = "Waiting for input..."; return; }
+
+    try {
+      let out = "";
+      if (method === "base64") { try { out = atob(input); } catch { out = btoa(input); } }
+      else if (method === "reverse") { out = input.split("").reverse().join(""); }
+      else if (method === "hex") {
+        if (/^[0-9a-fA-F\s]+$/.test(input)) out = input.split(/\s+/).map(h => String.fromCharCode(parseInt(h,16))).join('');
+        else out = input.split('').map(c => c.charCodeAt(0).toString(16)).join(' ');
+      } else if (method === "binary") {
+        if (/^[01\s]+$/.test(input)) out = input.split(/\s+/).map(b => String.fromCharCode(parseInt(b,2))).join('');
+        else out = input.split('').map(c => c.charCodeAt(0).toString(2).padStart(8,'0')).join(' ');
+      } else if (method === "caesar") {
+        const s = parseInt(document.getElementById('shift').value) || 0;
+        out = input.replace(/[a-z]/gi, c => { const base = c <= 'Z' ? 65 : 97; return String.fromCharCode(((c.charCodeAt(0) - base + s) % 26) + base); });
+      } else if (method === "morse") {
+        if (/^[\.\-\/\s]+$/.test(input)) out = input.split(/\s+/).map(m => revMorse[m] || '?').join('');
+        else out = input.toLowerCase().split('').map(c => morseMap[c] || c).join(' ');
+      }
+      res.innerText = out;
+    } catch (e) { res.innerText = "Error processing input."; }
+  }
+
+  function saveToHistory() {
+    const result = document.getElementById('result').innerText;
+    if (result === "Waiting for input..." || result.startsWith("Error")) return;
+    history.unshift(result);
+    if (history.length > 5) history.pop();
+    localStorage.setItem('decoder_history', JSON.stringify(history));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const list = document.getElementById('historyList');
+    if (history.length === 0) return;
+    list.innerHTML = history.map((item, index) => `
+      <div class="history-item">
+        <div class="history-text">${item}</div>
+        <div class="history-action" onclick="copyFromHistory(${index})">Copy</div>
+      </div>
+    `).join('');
+  }
+
+  function copyFromHistory(index) {
+    if (isLocked) return;
+    navigator.clipboard.writeText(history[index]);
+    alert("Copied from history!");
+  }
+
+  function downloadResult() {
+    if (isLocked) return;
+    const text = document.getElementById('result').innerText;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const anchor = document.createElement('a');
+    anchor.download = "decoded_output.txt";
+    anchor.href = URL.createObjectURL(blob);
+    anchor.click();
+  }
+
+  function copyResult() {
+    if (isLocked) return;
+    navigator.clipboard.writeText(document.getElementById('result').innerText);
+    const btn = document.getElementById('copyBtn');
+    btn.innerText = "Copied!";
+    setTimeout(() => btn.innerText = "Copy", 2000);
+  }
+
+  renderHistory();
+</script>
+
+</body>
+</html>
